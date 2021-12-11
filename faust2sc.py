@@ -10,8 +10,8 @@ from collections import ChainMap
 # Utils
 ###########################################
 
+# TODO Is this cross platform? Does it work on Windows?
 def generate_json(dsp_file):
-    # TODO Is this cross platform? Does it work on Windows?
     cmd = "faust -json %s -O %s" % (dsp_file, os.path.dirname(dsp_file))
     os.system(cmd)
     return dsp_file + ".json"
@@ -239,11 +239,16 @@ def make_class_file(target_dir, json_data):
     file_name = path.join(out_dir, file_name)
     write_file(file_name, get_sc_class(json_data))
 
-if __name__ == "__main__":
-    jsonfile = generate_json("test/testfile.dsp")
+###########################################
+# faust2sc
+###########################################
+def faust2sc(jsonfile, target_folder, faustfile):
+    if not jsonfile:
+        jsonfile = generate_json(faustfile)
+
     data = read_json(jsonfile)
-    # print(help_file_contents)
-    # print(get_sc_class(data))
-    # print(type(data["meta"]))
-    make_class_file("test", data)
-    make_help_file("test", data)
+    make_class_file(target_folder, data)
+    make_help_file(target_folder, data)
+
+if __name__ == "__main__":
+    faust2sc("", "test", "testfile.dsp")
