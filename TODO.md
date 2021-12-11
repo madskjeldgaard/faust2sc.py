@@ -1,2 +1,5 @@
+- Prefix
 - Add object compilation
 - Add command line interface
+- Make json compilation cross platform
+	- Capture output of faust compilation so that it doesn't print
