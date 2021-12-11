@@ -1,0 +1,2 @@
+- Add object compilation
+- Add command line interface
