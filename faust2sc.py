@@ -53,9 +53,9 @@ def class_help(json_data):
     meta = flatten_list_of_dicts(json_data["meta"])
 
     out_string = """
-CLASS:: %s
-SUMMARY:: A Faust plugin
-RELATED::Classes/SinOsc
+CLASS::%s
+SUMMARY::A Faust plugin
+RELATED::Classes/UGen
 CATEGORIES::Categories>Faust
 DESCRIPTION::
 A Faust plugin written by %s.
@@ -66,9 +66,12 @@ CLASSMETHODS::
 METHOD::ar
 %s
 EXAMPLES::
+
 code::
 // TODO
 ::
+
+KEYWORD::faust,plugin
     """ % (
             json_data["name"],
             meta["author"],
