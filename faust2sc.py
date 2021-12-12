@@ -5,7 +5,6 @@ import os.path
 from os import path
 import json
 from collections import ChainMap
-
 ###########################################
 # Utils
 ###########################################
@@ -46,7 +45,7 @@ def make_dir(dir_path):
 def get_help_file_arguments(json_data):
     out_string = ""
     # The zero index is needed because it's all in the first index, or is it? @FIXME
-    for ui_element in json_data["ui"][0]["items"]:
+    for ui_element in flatten_list_of_dicts(json_data["ui"])["items"]:
         param_name = ui_element["label"]
         # param_default = ui_element["init"]
         param_min = ui_element["min"]
@@ -68,11 +67,11 @@ def get_help_file_arguments(json_data):
 
     return out_string
 
-def class_help(json_data):
+def class_help(json_data, noprefix):
 
     # TODO Are the fields used from this guaranteed and what happens if they are not used?
     meta = flatten_list_of_dicts(json_data["meta"])
-    class_name = get_class_name(json_data)
+    class_name = get_class_name(json_data, noprefix)
 
     out_string = """
 CLASS::%s
@@ -107,7 +106,7 @@ KEYWORD::faust,plugin
 
     return out_string
 
-def make_help_file(target_dir, json_data):
+def make_help_file(target_dir, json_data, noprefix):
 
     # Create directory if necessary
     out_dir = path.join(target_dir, "HelpSource")
@@ -116,9 +115,9 @@ def make_help_file(target_dir, json_data):
     make_dir(out_dir)
 
     # help file
-    file_name = get_class_name(json_data) + ".schelp"
+    file_name = get_class_name(json_data, noprefix) + ".schelp"
     file_name = path.join(out_dir, file_name)
-    write_file(file_name, class_help(json_data))
+    write_file(file_name, class_help(json_data, noprefix))
 
 ###########################################
 # Class file
@@ -148,15 +147,31 @@ def get_parameter_list(json_data, with_initialization):
 
     return out_string
 
-def get_class_name(json_data):
+# This sanitizes the "name" field from the faust file, makes it capitalized, removes dashes and spaces
+def get_class_name(json_data, noprefix):
     # TODO: Make this more consistent with the logic of the generator - what happens to spaces in names for example?
-    return json_data["name"].capitalize()
 
-def get_sc_class(json_data):
+    # Capitalize all words in string
+    name = json_data["name"].title()
+
+    # Remove whitespace
+    name = name.strip()
+
+    # Remove dashes and underscores
+    name = name.replace("-", "")
+    name = name.replace("_", "")
+
+    if noprefix:
+        return name
+    else:
+        name = "Faust" + name
+        return name
+
+def get_sc_class(json_data, noprefix):
     # TODO Are the fields used from this guaranteed and what happens if they are not used?
     # meta = flatten_list_of_dicts(json_data["meta"])
 
-    class_name = get_class_name(json_data)
+    class_name = get_class_name(json_data, noprefix)
 
     # Specifics for multi channel output ugens: Needs to inherit from different class and the init function needs to be overridden
     if json_data["outputs"] > 1:
@@ -213,7 +228,6 @@ checkInputs {
     %s
 }
 """ % (
-
             class_name, parent_class,
             # *ar
             get_parameter_list(json_data, True),
@@ -223,32 +237,46 @@ checkInputs {
             get_parameter_list(json_data, True),
             get_parameter_list(json_data, False),
 
-            json_data["name"],
+            class_name, #json_data["name"],
             input_check,
             init
         )
 
-def make_class_file(target_dir, json_data):
+def make_class_file(target_dir, json_data, noprefix):
 
     # Create directory if necessary
     out_dir = path.join(target_dir, "Classes")
     make_dir(out_dir)
 
     # help file
-    file_name = get_class_name(json_data) + ".sc"
+    file_name = get_class_name(json_data, noprefix) + ".sc"
     file_name = path.join(out_dir, file_name)
-    write_file(file_name, get_sc_class(json_data))
+    write_file(file_name, get_sc_class(json_data, noprefix))
 
 ###########################################
 # faust2sc
 ###########################################
-def faust2sc(jsonfile, target_folder, faustfile):
+def faust2sc(jsonfile, target_folder, faustfile, noprefix):
     if not jsonfile:
         jsonfile = generate_json(faustfile)
 
     data = read_json(jsonfile)
-    make_class_file(target_folder, data)
-    make_help_file(target_folder, data)
+    make_class_file(target_folder, data, noprefix)
+    make_help_file(target_folder, data, noprefix)
 
 if __name__ == "__main__":
-    faust2sc("", "test", "testfile.dsp")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Convert faust .dsp files to SuperCollider class and help files'
+    )
+
+    parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
+    parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
+    parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", action="store_true")
+
+    args = parser.parse_args()
+
+    targetfolder = args.targetfolder or ""
+    noprefix = args.noprefix or False
+    faust2sc("", targetfolder, args.inputfile, noprefix)
