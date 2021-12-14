@@ -15,15 +15,15 @@ import platform
 # TODO Is this cross platform? Does it work on Windows?
 def generate_json(dsp_file, out_dir):
     # out_dir = os.path.dirname(dsp_file)
-    cpp_file = path.basename(path.splitext(dsp_file)[0]) + ".cpp"
+    cpp_file = path.basename(path.splitext(dsp_file)[0] + ".cpp")
     cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
 
-    result = {"dsp_file": dsp_file, "out_dir": out_dir, "cpp_file": cpp_file, "json_file": dsp_file + ".json" }
+    result = {"dsp_file": dsp_file, "out_dir": out_dir, "cpp_file": path.abspath(cpp_file), "json_file": path.abspath(dsp_file) + ".json" }
 
     try:
         subprocess.run(cmd.split(), check = True, capture_output=False)
     except subprocess.CalledProcessError:
-        print(cmd)
+        # print(cmd)
         sys.exit('faust failed to compile json file')
 
     return result
@@ -45,11 +45,9 @@ def write_file(file, contents):
     f.close()
 
 def make_dir(dir_path):
-    if path.exists(dir_path):
-        # print("Warning: %s already exists. Not creating again" % dir_path)
-        nothing=0
-    else:
+    if not path.exists(dir_path):
         os.mkdir(dir_path)
+
 ###########################################
 # Compilation
 ###########################################
@@ -108,7 +106,40 @@ def faustoptflags():
 
     return envDict
 
-def includeflags():
+# Check if header path contains the right folders
+def check_header_path(headerpath):
+    headerpath = path.join(headerpath, "include")
+    plugin_interface = path.join(headerpath, "plugin_interface")
+    server = path.join(headerpath, "server")
+    common = path.join(headerpath, "common")
+
+    if path.exists(headerpath) and path.exists(plugin_interface) and path.exists(server) and path.exists(common):
+        return True
+    else:
+        return False
+
+# Try and find SuperCollider headers on system
+def find_headers():
+    # Possible locations of SuperCollider headers
+    header_directories = [
+        "/usr/local/include/SuperCollider/include",
+        "/usr/local/include/supercollider",
+        "/usr/include/SuperCollider",
+        "/usr/include/supercollider",
+        "/usr/local/include/SuperCollider/",
+        "/usr/share/supercollider-headers",
+        path.join(os.getcwd(), "supercollider")
+        ]
+
+    if os.environ['HOME']:
+        header_directories.append(path.join(os.environ['HOME'], "supercollider"))
+
+    for headerpath in header_directories:
+        if check_header_path(headerpath):
+            print("Found SuperCollider headers: %s" % headerpath)
+            return headerpath
+
+def includeflags(header_path):
     dspresult = subprocess.run(["faust", "-dspdir"], stdout=subprocess.PIPE)
     dspdir = dspresult.stdout.decode('utf-8')
 
@@ -119,33 +150,60 @@ def includeflags():
     includedir = incresult.stdout.decode('utf-8')
 
     # TODO: TEMP
-    sc = "/home/mads/supercollider"
+
+    if header_path:
+        sc = header_path
+    else:
+        possible_header_path = find_headers()
+        if possible_header_path:
+            if check_header_path(possible_header_path):
+                sc = possible_header_path
+            else:
+                sys.exit("Could not find SuperCollider headers")
+        else:
+            sys.exit("Could not find SuperCollider headers")
+
+    sc = path.join(sc, "include")
 
     plugin_interface = path.join(sc, "plugin_interface")
+    if not path.exists(plugin_interface):
+        sys.exit("Could not find supercollider headers")
+
     server = path.join(sc, "server")
+    if not path.exists(server):
+        sys.exit("Could not find supercollider headers")
+
     common = path.join(sc, "common")
+    if not path.exists(common):
+        sys.exit("Could not find supercollider headers")
 
     return "-I%s -I%s -I%s -I%s -I%s" % (plugin_interface, common, server, includedir, os.getcwd())
 
-def buildflags():
+def buildflags(headerpath):
     env = faustoptflags()
-    return "-O3 %s %s %s" % (env["SCFLAGS"], includeflags(), env["MYGCCFLAGS"])
+    return "-O3 %s %s %s" % (env["SCFLAGS"], includeflags(headerpath), env["MYGCCFLAGS"])
 
 # TODO: Allow additional CXX flags
-def compile(cpp_file, class_name, compile_supernova=True):
-    flags = buildflags()
+def compile(out_dir, cpp_file, class_name, compile_supernova, headerpath):
+    print("Compiling %s" % class_name)
+
+    flags = buildflags(headerpath)
     env = faustoptflags()
-    scsynth_obj = class_name + "." + env["EXT"]
-    scsynth_compile_command = "%s %s -Dmydsp=%s -o %s %s" % (os.environ["CXX"], flags, class_name, scsynth_obj, cpp_file)
 
-    # Compile scsynth
-    os.system(scsynth_compile_command)
-    print(scsynth_compile_command)
+    if path.exists(cpp_file):
+        scsynth_obj = path.join(out_dir, class_name + "." + env["EXT"])
+        scsynth_compile_command = "%s %s -Dmydsp=\"%s\" -o %s %s" % (os.environ["CXX"], flags, class_name, scsynth_obj, cpp_file)
 
-    if compile_supernova:
-        supernova_obj = class_name + "_supernova." + env["EXT"]
-        supernova_compile_command = "%s %s -Dmydsp=%s -o %s %s" % (os.environ["CXX"], flags, class_name, supernova_obj, cpp_file)
-        os.system(supernova_compile_command)
+        # Compile scsynth
+        os.system(scsynth_compile_command.replace("\n", ""))
+        # print(scsynth_compile_command)
+
+        if compile_supernova:
+            supernova_obj = path.join(out_dir, class_name + "_supernova." + env["EXT"])
+            supernova_compile_command = "%s %s -Dmydsp=\"%s\" -o %s %s" % (os.environ["CXX"], flags, class_name, supernova_obj, cpp_file)
+            os.system(supernova_compile_command.replace("\n", ""))
+    else:
+        sys.exit("Could not find cpp_file")
 
 ###########################################
 # Help file
@@ -259,13 +317,12 @@ def get_parameter_list(json_data, with_initialization):
 
 # This sanitizes the "name" field from the faust file, makes it capitalized, removes dashes and spaces
 def get_class_name(json_data, noprefix):
-    # TODO: Make this more consistent with the logic of the generator - what happens to spaces in names for example?
-
     # Capitalize all words in string
     name = json_data["name"].title()
 
     # Remove whitespace
     name = name.strip()
+    name = name.replace(" ", "")
 
     # Remove dashes and underscores
     name = name.replace("-", "")
@@ -382,18 +439,20 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(
-        description='Convert faust .dsp files to SuperCollider class and help files and plugin objects'
+        description='Compile faust .dsp files to SuperCollider plugins including class and help files and supernova objects'
     )
 
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
     parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
     parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
+    parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
+    parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers")
 
     args = parser.parse_args()
 
     targetfolder = args.targetfolder or os.getcwd()
     noprefix = args.noprefix or 0
     scresult = faust2sc(args.inputfile, targetfolder, noprefix)
-
-    compile_supernova = True
-    compile(scresult["cpp_file"], scresult["class"], compile_supernova)
+    compile_supernova = args.supernova
+    header_path = args.headerpath
+    compile(scresult["out_dir"], scresult["cpp_file"], scresult["class"], compile_supernova, header_path)
