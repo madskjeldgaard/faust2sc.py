@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # Compile a faust file as a SuperCollider help file
 import os
 import sys
@@ -460,7 +461,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
     parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
-    parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers")
+    parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
 
     args = parser.parse_args()
 
