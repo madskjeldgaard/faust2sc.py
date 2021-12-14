@@ -1,19 +1,32 @@
 # Compile a faust file as a SuperCollider help file
 # faust -json $INFILE -O . > /dev/null && echo "Done."
 import os
+import sys
 import os.path
 from os import path
 import json
 from collections import ChainMap
+import subprocess
+import platform
+
 ###########################################
 # Utils
 ###########################################
-
 # TODO Is this cross platform? Does it work on Windows?
-def generate_json(dsp_file):
-    cmd = "faust -json %s -O %s" % (dsp_file, os.path.dirname(dsp_file))
-    os.system(cmd)
-    return dsp_file + ".json"
+def generate_json(dsp_file, out_dir):
+    # out_dir = os.path.dirname(dsp_file)
+    cpp_file = path.basename(path.splitext(dsp_file)[0]) + ".cpp"
+    cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
+
+    result = {"dsp_file": dsp_file, "out_dir": out_dir, "cpp_file": cpp_file, "json_file": dsp_file + ".json" }
+
+    try:
+        subprocess.run(cmd.split(), check = True, capture_output=False)
+    except subprocess.CalledProcessError:
+        print(cmd)
+        sys.exit('faust failed to compile json file')
+
+    return result
 
 def read_json(json_file):
     f = open(json_file)
@@ -33,9 +46,106 @@ def write_file(file, contents):
 
 def make_dir(dir_path):
     if path.exists(dir_path):
-        print("Warning: %s already exists. Not creating again" % dir_path)
+        # print("Warning: %s already exists. Not creating again" % dir_path)
+        nothing=0
     else:
         os.mkdir(dir_path)
+###########################################
+# Compilation
+###########################################
+
+# TODO flags/env vars not included yet:
+# - DNDEBUG
+# - OMP
+# - FAUSTTOOLSFLAGS
+
+def faustoptflags():
+    systemType = platform.system()
+    machine = platform.machine()
+    envDict = {}
+
+    # Compilation flags for gcc and icc
+    if machine == 'arm6vl':
+        # Raspberry Pi
+        envDict["MYGCCFLAGS"] = "-std=c++11 -O3 -march=armv6zk -mcpu=arm1176jzf-s -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -ffast-math -ftree-vectorize"
+
+    # MacOS
+    elif systemType == 'Darwin':
+        envDict["EXT"] = "scx"
+
+        # TODO: DNDEBUG
+        envDict["SCFLAGS"] = "-DNO_LIBSNDFILE -DSC_DARWIN -bundle"
+
+        if machine == 'arm64':
+            # Silicon MX
+            envDict["MYGCCFLAGS"] = "-std=c++11 -Ofast"
+        else:
+            envDict["MYGCCFLAGS"] = "-std=c++11 -Ofast -march=native"
+
+        envDict["MYGCCFLAGSGENERIC"]="-std=c++11 -Ofast"
+    else:
+        envDict["MYGCCFLAGS"] = "-std=c++11 -Ofast -march=native"
+        envDict["MYGCCFLAGSGENERIC"] = "-std=c++11 -Ofast"
+
+    envDict["MYICCFLAGS"]="-std=c++11 -O3 -xHost -ftz -fno-alias -fp-model fast=2"
+
+    if systemType != 'DARWIN':
+        envDict["EXT"]="so"
+        # TODO DNDEBUG
+        envDict["SCFLAGS"]="-DNO_LIBSNDFILE -DSC_LINUX -shared -fPIC"
+
+    if 'CXXFLAGS' in os.environ:
+        envDict["MYGCCFLAGS"] = envDict["MYGCCFLAGS"] + " " + os.environ["CXXFLAGS"]
+
+    # Set default values for CXX and CC
+    if 'CXX' not in os.environ:
+        os.environ['CXX'] = "c++"
+
+    if 'CC' not in os.environ:
+        os.environ['CC'] = "cc"
+
+    os.environ['LIPO'] = "lipo"
+
+    return envDict
+
+def includeflags():
+    dspresult = subprocess.run(["faust", "-dspdir"], stdout=subprocess.PIPE)
+    dspdir = dspresult.stdout.decode('utf-8')
+
+    libresult = subprocess.run(["faust", "-libdir"], stdout=subprocess.PIPE)
+    libdir = libresult.stdout.decode('utf-8')
+
+    incresult = subprocess.run(["faust", "-includedir"], stdout=subprocess.PIPE)
+    includedir = incresult.stdout.decode('utf-8')
+
+    # TODO: TEMP
+    sc = "/home/mads/supercollider"
+
+    plugin_interface = path.join(sc, "plugin_interface")
+    server = path.join(sc, "server")
+    common = path.join(sc, "common")
+
+    return "-I%s -I%s -I%s -I%s -I%s" % (plugin_interface, common, server, includedir, os.getcwd())
+
+def buildflags():
+    env = faustoptflags()
+    return "-O3 %s %s %s" % (env["SCFLAGS"], includeflags(), env["MYGCCFLAGS"])
+
+# TODO: Allow additional CXX flags
+def compile(cpp_file, class_name, compile_supernova=True):
+    flags = buildflags()
+    env = faustoptflags()
+    scsynth_obj = class_name + "." + env["EXT"]
+    scsynth_compile_command = "%s %s -Dmydsp=%s -o %s %s" % (os.environ["CXX"], flags, class_name, scsynth_obj, cpp_file)
+
+    # Compile scsynth
+    os.system(scsynth_compile_command)
+    print(scsynth_compile_command)
+
+    if compile_supernova:
+        supernova_obj = class_name + "_supernova." + env["EXT"]
+        supernova_compile_command = "%s %s -Dmydsp=%s -o %s %s" % (os.environ["CXX"], flags, class_name, supernova_obj, cpp_file)
+        os.system(supernova_compile_command)
 
 ###########################################
 # Help file
@@ -161,7 +271,7 @@ def get_class_name(json_data, noprefix):
     name = name.replace("-", "")
     name = name.replace("_", "")
 
-    if noprefix:
+    if noprefix == 1:
         return name
     else:
         name = "Faust" + name
@@ -256,27 +366,34 @@ def make_class_file(target_dir, json_data, noprefix):
 ###########################################
 # faust2sc
 ###########################################
-def faust2sc(jsonfile, target_folder, faustfile, noprefix):
-    if not jsonfile:
-        jsonfile = generate_json(faustfile)
+def faust2sc(faustfile, target_folder, noprefix):
+    result = generate_json(faustfile, target_folder)
 
-    data = read_json(jsonfile)
+    data = read_json(result["json_file"])
     make_class_file(target_folder, data, noprefix)
     make_help_file(target_folder, data, noprefix)
 
+    result["class"] = get_class_name(data, noprefix)
+
+    return result
+
 if __name__ == "__main__":
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(
-        description='Convert faust .dsp files to SuperCollider class and help files'
+        description='Convert faust .dsp files to SuperCollider class and help files and plugin objects'
     )
 
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
     parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
-    parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", action="store_true")
+    parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
 
     args = parser.parse_args()
 
-    targetfolder = args.targetfolder or ""
-    noprefix = args.noprefix or False
-    faust2sc("", targetfolder, args.inputfile, noprefix)
+    targetfolder = args.targetfolder or os.getcwd()
+    noprefix = args.noprefix or 0
+    scresult = faust2sc(args.inputfile, targetfolder, noprefix)
+
+    compile_supernova = True
+    compile(scresult["cpp_file"], scresult["class"], compile_supernova)
