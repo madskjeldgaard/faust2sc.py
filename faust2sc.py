@@ -334,7 +334,7 @@ def sanitize_label(label):
     remove_chars = "\\-_/([^)]*)"
     for char in remove_chars:
         label = label.replace(char, "")
-    return label
+    return label.lower()
 
 # Iterate over all UI elements to get the parameter names, values and ranges
 def get_parameter_list(json_data, with_initialization):
@@ -383,20 +383,26 @@ def get_parameter_list(json_data, with_initialization):
 # This sanitizes the "name" field from the faust file, makes it capitalized, removes dashes and spaces
 def get_class_name(json_data, noprefix):
     # Capitalize all words in string
-    name = json_data["name"].title()
 
-    # Remove whitespace
-    name = name.strip()
-    name = name.replace(" ", "")
+    name = dsp_name(json_data)
 
-    # Remove dashes and underscores
-    name = name.replace("-", "")
-    name = name.replace("_", "")
-
-    if noprefix == 1:
-        return name
-    else:
+    if noprefix != 1:
         name = "Faust" + name
+
+    # Max length of name is 31
+    if len(name) > 31:
+        name = name[0:31]
+
+    name = name[0].upper() + name[1:]
+    return name
+
+def dsp_name(json_data):
+    name  = json_data["name"][0].upper() + json_data["name"][1:].replace("-", "").replace("_", "").replace(" ", "")
+
+    maxlen = 31
+    if len(name) > maxlen:
+        return name[0:maxlen]
+    else:
         return name
 
 # Generate supercollider class file contents
@@ -405,6 +411,11 @@ def get_sc_class(json_data, noprefix):
     # meta = flatten_list_of_dicts(json_data["meta"])
 
     class_name = get_class_name(json_data, noprefix)
+    name  = dsp_name(json_data)
+    # name = json_data["name"]
+
+    if len(name) > 31:
+        name = name[0:31]
 
     # Specifics for multi channel output ugens: Needs to inherit from different class and the init function needs to be overridden
     if json_data["outputs"] > 1:
@@ -473,7 +484,7 @@ checkInputs {
             # FIXME: This is pretty ugly but it matches what the normalizeClassName function does in faust's supercollider.cpp
             # Ideally, this should be fixed in the supercollider.cpp
             # Because, not doing this will lead to "plugin not installed" type errors in SuperCollider
-            json_data["name"][0].upper() + json_data["name"][1:].replace("-", "").replace("_", "").replace(" ", ""),
+            name,
             input_check,
             init
         )
