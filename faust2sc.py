@@ -231,7 +231,11 @@ def get_help_file_arguments(json_data):
     out_string = ""
     # The zero index is needed because it's all in the first index, or is it? @FIXME
     for ui_element in flatten_list_of_dicts(json_data["ui"])["items"]:
-        param_name = ui_element["label"]
+
+        param_name = ""
+        if "label" in ui_element:
+            # Sanitize label
+            param_name = sanitize_label(ui_element["label"])
 
         param_min=""
         if "min" in ui_element:
@@ -325,22 +329,38 @@ def make_help_file(target_dir, json_data, noprefix):
 ###########################################
 # Class file
 ###########################################
+def sanitize_label(label):
+    # FIXME: Does this actually work with the compiled objects?
+    remove_chars = "\\-_/([^)]*)"
+    for char in remove_chars:
+        label = label.replace(char, "")
+    return label
 
 # Iterate over all UI elements to get the parameter names, values and ranges
 def get_parameter_list(json_data, with_initialization):
     out_string = ""
     # The zero index is needed because it's all in the first index, or is it? @FIXME
     counter=0
+
+    inputs = ""
+    if json_data["inputs"] > 0:
+        for i in range(json_data["inputs"]):
+            if i != 0:
+                inputs = inputs + ", in%s" % i
+            else:
+                inputs = inputs + "in%s" % i
+
     for ui_element in json_data["ui"][0]["items"]:
+
         param_name=""
         if "label" in ui_element:
-            param_name = ui_element["label"].lower()
+            param_name = sanitize_label(ui_element["label"])
 
         param_default = ""
         if "init" in ui_element:
             param_default = ui_element["init"]
         else:
-            with_initialization = False
+            param_default = "0"
 
         # Param name
         if with_initialization:
@@ -354,6 +374,9 @@ def get_parameter_list(json_data, with_initialization):
             out_string = this_argument
 
         counter = counter + 1
+
+    if json_data["inputs"] > 0:
+        out_string = inputs + "," + out_string
 
     return out_string
 
@@ -488,7 +511,6 @@ if __name__ == "__main__":
     import argparse
     import sys
     import tempfile
-    import shutil
 
     parser = argparse.ArgumentParser(
         description='Compile faust .dsp files to SuperCollider plugins including class and help files and supernova objects'
@@ -518,12 +540,17 @@ if __name__ == "__main__":
     # Move files to target
     env = faustoptflags()
     target = args.targetfolder or os.getcwd()
+
+    # Move SuperCollider files
     shutil.copytree(path.join(tmp_folder.name, "Classes"), path.join(target, "Classes"), dirs_exist_ok=True)
     shutil.copytree(path.join(tmp_folder.name, "HelpSource"), path.join(target, "HelpSource"), dirs_exist_ok=True)
+
+    # Move object files
     for objfile in os.listdir(tmp_folder.name):
         if objfile.endswith(env["EXT"]):
             shutil.move(path.join(tmp_folder.name, objfile), path.join(target, objfile))
 
+    # Move cpp file
     copy_cpp = args.cpp or False
     if copy_cpp:
         shutil.move(scresult["cpp_file"], path.join(target, scresult["cpp_file"]))
