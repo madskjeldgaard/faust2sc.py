@@ -1,5 +1,4 @@
 # Compile a faust file as a SuperCollider help file
-# faust -json $INFILE -O . > /dev/null && echo "Done."
 import os
 import sys
 import os.path
@@ -12,8 +11,9 @@ import platform
 ###########################################
 # Utils
 ###########################################
+
 # TODO Is this cross platform? Does it work on Windows?
-def generate_json(dsp_file, out_dir):
+def convert_files(dsp_file, out_dir):
     # out_dir = os.path.dirname(dsp_file)
     cpp_file = path.basename(path.splitext(dsp_file)[0] + ".cpp")
     cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
@@ -57,6 +57,7 @@ def make_dir(dir_path):
 # - OMP
 # - FAUSTTOOLSFLAGS
 
+# This is a slightly hackey way of including all of the environment variables found in the `faustoptflags` script, mostly because I could not find a python native way to set and access those variables otherwise
 def faustoptflags():
     systemType = platform.system()
     machine = platform.machine()
@@ -139,17 +140,16 @@ def find_headers():
             print("Found SuperCollider headers: %s" % headerpath)
             return headerpath
 
+# Generate string of include flags for the compiler command
 def includeflags(header_path):
-    dspresult = subprocess.run(["faust", "-dspdir"], stdout=subprocess.PIPE)
-    dspdir = dspresult.stdout.decode('utf-8')
+    # dspresult = subprocess.run(["faust", "-dspdir"], stdout=subprocess.PIPE)
+    # dspdir = dspresult.stdout.decode('utf-8')
 
-    libresult = subprocess.run(["faust", "-libdir"], stdout=subprocess.PIPE)
-    libdir = libresult.stdout.decode('utf-8')
+    # libresult = subprocess.run(["faust", "-libdir"], stdout=subprocess.PIPE)
+    # libdir = libresult.stdout.decode('utf-8')
 
     incresult = subprocess.run(["faust", "-includedir"], stdout=subprocess.PIPE)
     includedir = incresult.stdout.decode('utf-8')
-
-    # TODO: TEMP
 
     if header_path:
         sc = header_path
@@ -179,10 +179,12 @@ def includeflags(header_path):
 
     return "-I%s -I%s -I%s -I%s -I%s" % (plugin_interface, common, server, includedir, os.getcwd())
 
+# Generate a string of build flags for the compiler command. This includes the include flags.
 def buildflags(headerpath):
     env = faustoptflags()
     return "-O3 %s %s %s" % (env["SCFLAGS"], includeflags(headerpath), env["MYGCCFLAGS"])
 
+# Compile a .cpp file generated using faust to SuperCollider plugins.
 # TODO: Allow additional CXX flags
 def compile(out_dir, cpp_file, class_name, compile_supernova, headerpath):
     print("Compiling %s" % class_name)
@@ -195,12 +197,14 @@ def compile(out_dir, cpp_file, class_name, compile_supernova, headerpath):
         scsynth_compile_command = "%s %s -Dmydsp=\"%s\" -o %s %s" % (os.environ["CXX"], flags, class_name, scsynth_obj, cpp_file)
 
         # Compile scsynth
+        print("Compiling scsynth object using command:\n%s" % scsynth_compile_command)
         os.system(scsynth_compile_command.replace("\n", ""))
-        # print(scsynth_compile_command)
 
         if compile_supernova:
             supernova_obj = path.join(out_dir, class_name + "_supernova." + env["EXT"])
             supernova_compile_command = "%s %s -Dmydsp=\"%s\" -o %s %s" % (os.environ["CXX"], flags, class_name, supernova_obj, cpp_file)
+
+            print("Compiling supernova object using command:\n%s" % supernova_compile_command)
             os.system(supernova_compile_command.replace("\n", ""))
     else:
         sys.exit("Could not find cpp_file")
@@ -235,6 +239,7 @@ def get_help_file_arguments(json_data):
 
     return out_string
 
+# Generate the contents of a SuperCollider help file
 def class_help(json_data, noprefix):
 
     # TODO Are the fields used from this guaranteed and what happens if they are not used?
@@ -274,6 +279,7 @@ KEYWORD::faust,plugin
 
     return out_string
 
+# Create a help file in target_dir
 def make_help_file(target_dir, json_data, noprefix):
 
     # Create directory if necessary
@@ -334,6 +340,7 @@ def get_class_name(json_data, noprefix):
         name = "Faust" + name
         return name
 
+# Generate supercollider class file contents
 def get_sc_class(json_data, noprefix):
     # TODO Are the fields used from this guaranteed and what happens if they are not used?
     # meta = flatten_list_of_dicts(json_data["meta"])
@@ -404,11 +411,15 @@ checkInputs {
             get_parameter_list(json_data, True),
             get_parameter_list(json_data, False),
 
-            class_name, #json_data["name"],
+            # FIXME: This is pretty ugly but it matches what the normalizeClassName function does in faust's supercollider.cpp
+            # Ideally, this should be fixed in the supercollider.cpp
+            # Because, not doing this will lead to "plugin not installed" type errors in SuperCollider
+            json_data["name"][0].upper() + json_data["name"][1:].replace("-", "").replace("_", "").replace(" ", ""),
             input_check,
             init
         )
 
+# Make Supercollider class file
 def make_class_file(target_dir, json_data, noprefix):
 
     # Create directory if necessary
@@ -423,8 +434,11 @@ def make_class_file(target_dir, json_data, noprefix):
 ###########################################
 # faust2sc
 ###########################################
+
+# Generate SuperCollider class and help files and return a dictionary of paths to the generated files including the .cpp and .json files produced by the faust command.
 def faust2sc(faustfile, target_folder, noprefix):
-    result = generate_json(faustfile, target_folder)
+    print("Converting faust file to SuperCollider class and help files.\nTarget dir: %s" % target_folder)
+    result = convert_files(faustfile, target_folder)
 
     data = read_json(result["json_file"])
     make_class_file(target_folder, data, noprefix)
