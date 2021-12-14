@@ -8,6 +8,7 @@ import json
 from collections import ChainMap
 import subprocess
 import platform
+import shutil
 
 ###########################################
 # Utils
@@ -15,20 +16,22 @@ import platform
 
 # TODO Is this cross platform? Does it work on Windows?
 def convert_files(dsp_file, out_dir):
-    cpp_file = path.basename(path.splitext(path.basename(dsp_file))[0] + ".cpp")
+    cpp_file = path.splitext(path.basename(dsp_file))[0] + ".cpp"
 
-    cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
+    cmd = "faust -i -a supercollider.cpp -json %s -o %s" % (dsp_file, cpp_file)
 
     result = {
         "dsp_file": dsp_file,
         "out_dir": out_dir,
         "cpp_file": cpp_file,
-        "json_file": path.join(out_dir, path.basename(dsp_file)) + ".json"
+        "json_file": dsp_file + ".json"
     }
 
     print("Converting faust file to .json and .cpp.\nCommand:\n%s.\nc++ file:%s\njson file:%s" % (cmd, cpp_file, result["json_file"]))
     try:
         subprocess.run(cmd.split(), check = True, capture_output=False)
+        # shutil.move(result["cpp_file"], path.join(out_dir, result["cpp_file"]))
+        # shutil.move(result["json_file"], path.join(out_dir, result["json_file"]))
     except subprocess.CalledProcessError:
         # print(cmd)
         sys.exit('faust failed to compile json file')
@@ -484,24 +487,44 @@ def faust2sc(faustfile, target_folder, noprefix):
 if __name__ == "__main__":
     import argparse
     import sys
+    import tempfile
+    import shutil
 
     parser = argparse.ArgumentParser(
         description='Compile faust .dsp files to SuperCollider plugins including class and help files and supernova objects'
     )
 
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
-    # TODO this does not work ATM
-    # parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
+    parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
     parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
+    parser.add_argument("-c", "--cpp", help="Copy cpp file to target directory", action="store_true")
     parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
-
     args = parser.parse_args()
 
-    targetfolder = args.targetfolder or os.getcwd()
-    print(targetfolder)
+    # Temporary folder for intermediary files
+    tmp_folder = tempfile.TemporaryDirectory(prefix="faust.")
+
+    # Generate supercollider class and help file
     noprefix = args.noprefix or 0
-    scresult = faust2sc(args.inputfile, targetfolder, noprefix)
+    scresult = faust2sc(args.inputfile, tmp_folder.name, noprefix)
+
     compile_supernova = args.supernova
     header_path = args.headerpath
-    compile(scresult["out_dir"], scresult["cpp_file"], scresult["class"], compile_supernova, header_path)
+
+    # Compile the plugin objects
+    compile(tmp_folder.name, scresult["cpp_file"], scresult["class"], compile_supernova, header_path)
+
+    # Move files to target
+    env = faustoptflags()
+    target = args.targetfolder or os.getcwd()
+    shutil.copytree(path.join(tmp_folder.name, "Classes"), path.join(target, "Classes"), dirs_exist_ok=True)
+    shutil.copytree(path.join(tmp_folder.name, "HelpSource"), path.join(target, "HelpSource"), dirs_exist_ok=True)
+    for objfile in os.listdir(tmp_folder.name):
+        if objfile.endswith(env["EXT"]):
+            shutil.move(path.join(tmp_folder.name, objfile), path.join(target, objfile))
+
+    copy_cpp = args.cpp or False
+    if copy_cpp:
+        shutil.move(scresult["cpp_file"], path.join(target, scresult["cpp_file"]))
+    # tmp_folder
