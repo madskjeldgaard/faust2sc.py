@@ -15,9 +15,7 @@ import platform
 
 # TODO Is this cross platform? Does it work on Windows?
 def convert_files(dsp_file, out_dir):
-    # out_dir = os.path.dirname(dsp_file)
-    # cpp_file = path.join(out_dir, path.splitext(path.basename(dsp_file))[0] + ".cpp")
-    cpp_file = path.splitext(path.basename(dsp_file))[0] + ".cpp"
+    cpp_file = path.basename(path.splitext(path.basename(dsp_file))[0] + ".cpp")
 
     cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
 
@@ -25,10 +23,10 @@ def convert_files(dsp_file, out_dir):
         "dsp_file": dsp_file,
         "out_dir": out_dir,
         "cpp_file": cpp_file,
-        "json_file": path.join(out_dir, path.basename(dsp_file + ".json"))
+        "json_file": path.join(out_dir, path.basename(dsp_file)) + ".json"
     }
 
-    print("Converting faust file to .json and .cpp. Command:\n%s.\nCPPFILE: %s\nJsonfile:%s" % (cmd, cpp_file, result["json_file"]))
+    print("Converting faust file to .json and .cpp.\nCommand:\n%s.\nc++ file:%s\njson file:%s" % (cmd, cpp_file, result["json_file"]))
     try:
         subprocess.run(cmd.split(), check = True, capture_output=False)
     except subprocess.CalledProcessError:
@@ -332,7 +330,6 @@ def get_parameter_list(json_data, with_initialization):
     counter=0
     for ui_element in json_data["ui"][0]["items"]:
         param_name=""
-        print(ui_element["label"])
         if "label" in ui_element:
             param_name = ui_element["label"].lower()
 
@@ -493,7 +490,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
-    parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
+    # TODO this does not work ATM
+    # parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
     parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
     parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
@@ -501,6 +499,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     targetfolder = args.targetfolder or os.getcwd()
+    print(targetfolder)
     noprefix = args.noprefix or 0
     scresult = faust2sc(args.inputfile, targetfolder, noprefix)
     compile_supernova = args.supernova
