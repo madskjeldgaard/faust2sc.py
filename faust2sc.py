@@ -16,11 +16,19 @@ import platform
 # TODO Is this cross platform? Does it work on Windows?
 def convert_files(dsp_file, out_dir):
     # out_dir = os.path.dirname(dsp_file)
-    cpp_file = path.basename(path.splitext(dsp_file)[0] + ".cpp")
+    # cpp_file = path.join(out_dir, path.splitext(path.basename(dsp_file))[0] + ".cpp")
+    cpp_file = path.splitext(path.basename(dsp_file))[0] + ".cpp"
+
     cmd = "faust -i -a supercollider.cpp -json %s -O %s -o %s" % (dsp_file, out_dir, cpp_file)
 
-    result = {"dsp_file": dsp_file, "out_dir": out_dir, "cpp_file": path.abspath(cpp_file), "json_file": path.abspath(dsp_file) + ".json" }
+    result = {
+        "dsp_file": dsp_file,
+        "out_dir": out_dir,
+        "cpp_file": cpp_file,
+        "json_file": path.join(out_dir, path.basename(dsp_file + ".json"))
+    }
 
+    print("Converting faust file to .json and .cpp. Command:\n%s.\nCPPFILE: %s\nJsonfile:%s" % (cmd, cpp_file, result["json_file"]))
     try:
         subprocess.run(cmd.split(), check = True, capture_output=False)
     except subprocess.CalledProcessError:
@@ -30,10 +38,13 @@ def convert_files(dsp_file, out_dir):
     return result
 
 def read_json(json_file):
-    f = open(json_file)
-    data = json.load(f)
-    f.close()
-    return data
+    if path.exists(json_file):
+        f = open(json_file)
+        data = json.load(f)
+        f.close()
+        return data
+    else:
+        sys.exit("Could not find json file %s" % json_file)
 
 # Some parts of the generated json file are parsed as lists of dicts -
 # This flattens one of those into one dictionary
@@ -220,17 +231,23 @@ def get_help_file_arguments(json_data):
     # The zero index is needed because it's all in the first index, or is it? @FIXME
     for ui_element in flatten_list_of_dicts(json_data["ui"])["items"]:
         param_name = ui_element["label"]
-        # param_default = ui_element["init"]
-        param_min = ui_element["min"]
-        param_max = ui_element["max"]
+
+        param_min=""
+        if "min" in ui_element:
+            param_min = ui_element["min"]
+
+        param_max=""
+        if "max" in ui_element:
+            param_max = ui_element["max"]
 
         # Param name
         this_argument = "ARGUMENT::%s\n" % (param_name.lower())
-        meta = flatten_list_of_dicts(ui_element["meta"])
+        if "meta" in ui_element:
+            meta = flatten_list_of_dicts(ui_element["meta"])
 
-        # Add tooltip as a description
-        if meta["tooltip"]:
-            this_argument = this_argument + meta["tooltip"] + "\n"
+            # Add tooltip as a description
+            if "tooltip" in meta:
+                this_argument = this_argument + meta["tooltip"] + "\n"
 
         # Add min and max values if present
         if param_min and param_max:
@@ -247,13 +264,24 @@ def class_help(json_data, noprefix):
     meta = flatten_list_of_dicts(json_data["meta"])
     class_name = get_class_name(json_data, noprefix)
 
-    out_string = """
-CLASS::%s
+    if "description" in meta:
+        desc = meta["description"]
+    else:
+        desc = "A Faust plugin"
+
+    if "author" in meta:
+        author = meta["author"]
+
+        authorstring = "A Faust plugin written by %s." % author
+    else:
+        authorstring = ""
+
+    out_string = """CLASS::%s
 SUMMARY::A Faust plugin
 RELATED::Classes/UGen
 CATEGORIES::Categories>Faust
 DESCRIPTION::
-A Faust plugin written by %s.
+%s
 This plugin has %s inputs and %s outputs.
 %s
 
@@ -266,14 +294,13 @@ code::
 // TODO
 ::
 
-KEYWORD::faust,plugin
-    """ % (
+KEYWORD::faust,plugin""" % (
             class_name,
-            meta["author"],
+            authorstring,
             json_data["inputs"],
             json_data["outputs"],
             # get_value_from_dict_list(json_data["meta"], "description"),
-            meta["description"],
+            desc,
             # json_data["meta"]["description"],
             get_help_file_arguments(json_data)
         )
@@ -304,8 +331,16 @@ def get_parameter_list(json_data, with_initialization):
     # The zero index is needed because it's all in the first index, or is it? @FIXME
     counter=0
     for ui_element in json_data["ui"][0]["items"]:
-        param_name = ui_element["label"].lower()
-        param_default = ui_element["init"]
+        param_name=""
+        print(ui_element["label"])
+        if "label" in ui_element:
+            param_name = ui_element["label"].lower()
+
+        param_default = ""
+        if "init" in ui_element:
+            param_default = ui_element["init"]
+        else:
+            with_initialization = False
 
         # Param name
         if with_initialization:
