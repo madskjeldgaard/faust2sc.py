@@ -540,10 +540,10 @@ if __name__ == "__main__":
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
 
     parser.add_argument("-a", "--architecture", help="Use an alternative architecture file. If not set, it will use the default supercollider.cpp file that comes with faust.")
-    parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
-    parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
-    parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
-    parser.add_argument("-c", "--cpp", help="Copy cpp file to target directory", action="store_true")
+    parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder. If not used, it will put the files in the current working directory.")
+    parser.add_argument("-n", "--noprefix", help="1 == Do not prefix the SuperCollider class and object with Faust. 0 == prefix", type=int, choices=[0,1])
+    parser.add_argument("-s", "--supernova", help="Compile with supernova plugin", action="store_true")
+    parser.add_argument("-c", "--cpp", help="Copy cpp file to target directory after compilation.", action="store_true")
     parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
     args = parser.parse_args()
 
