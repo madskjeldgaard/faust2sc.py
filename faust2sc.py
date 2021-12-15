@@ -15,12 +15,14 @@ import shutil
 ###########################################
 
 # TODO Is this cross platform? Does it work on Windows?
-def convert_files(dsp_file, out_dir):
+def convert_files(dsp_file, out_dir, arch):
     cpp_file = path.splitext(path.basename(dsp_file))[0] + ".cpp"
+    arch_file = arch or "supercollider.cpp"
 
-    cmd = "faust -i -a supercollider.cpp -json %s -o %s" % (dsp_file, cpp_file)
+    cmd = "faust -i -a %s -json %s -o %s" % (arch_file, dsp_file, cpp_file)
 
     result = {
+        "arch_file": arch_file,
         "dsp_file": dsp_file,
         "out_dir": out_dir,
         "cpp_file": cpp_file,
@@ -391,19 +393,30 @@ def get_class_name(json_data, noprefix):
 
     # Max length of name is 31
     if len(name) > 31:
-        name = name[0:31]
+        name = name[0:30]
 
-    name = name[0].upper() + name[1:]
     return name
 
-def dsp_name(json_data):
-    name  = json_data["name"][0].upper() + json_data["name"][1:].replace("-", "").replace("_", "").replace(" ", "")
+# This matches the normalizeClassName function in supercollider.cpp
+def normalizeClassName(meta_name):
+    upnext=True
+    normalized=""
+    for char in meta_name:
+        if upnext:
+            normalized = normalized + char.upper()
+            upnext=False
+            continue
+        if char == "_" or char=="-" or char==" ":
+            upnext=True
+        else:
+            normalized = normalized + char
 
     maxlen = 31
-    if len(name) > maxlen:
-        return name[0:maxlen]
-    else:
-        return name
+    return normalized[0:maxlen-1]
+
+def dsp_name(json_data):
+    name  = normalizeClassName(json_data["name"])
+    return name
 
 # Generate supercollider class file contents
 def get_sc_class(json_data, noprefix):
@@ -413,9 +426,6 @@ def get_sc_class(json_data, noprefix):
     class_name = get_class_name(json_data, noprefix)
     name  = dsp_name(json_data)
     # name = json_data["name"]
-
-    if len(name) > 31:
-        name = name[0:31]
 
     # Specifics for multi channel output ugens: Needs to inherit from different class and the init function needs to be overridden
     if json_data["outputs"] > 1:
@@ -506,9 +516,9 @@ def make_class_file(target_dir, json_data, noprefix):
 ###########################################
 
 # Generate SuperCollider class and help files and return a dictionary of paths to the generated files including the .cpp and .json files produced by the faust command.
-def faust2sc(faustfile, target_folder, noprefix):
+def faust2sc(faustfile, target_folder, noprefix, arch):
     print("Converting faust file to SuperCollider class and help files.\nTarget dir: %s" % target_folder)
-    result = convert_files(faustfile, target_folder)
+    result = convert_files(faustfile, target_folder, arch)
 
     data = read_json(result["json_file"])
     make_class_file(target_folder, data, noprefix)
@@ -528,6 +538,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
+
+    parser.add_argument("-a", "--architecture", help="Use an alternative architecture file. If not set, it will use the default supercollider.cpp file that comes with faust.")
     parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder")
     parser.add_argument("-n", "--noprefix", help="Do not prefix the SuperCollider class and object with Faust", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile supernova plugin", action="store_true")
@@ -540,7 +552,7 @@ if __name__ == "__main__":
 
     # Generate supercollider class and help file
     noprefix = args.noprefix or 0
-    scresult = faust2sc(args.inputfile, tmp_folder.name, noprefix)
+    scresult = faust2sc(args.inputfile, tmp_folder.name, noprefix, args.architecture)
 
     compile_supernova = args.supernova
     header_path = args.headerpath
