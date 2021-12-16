@@ -103,7 +103,7 @@ def faustoptflags():
 
     envDict["MYICCFLAGS"]="-std=c++11 -O3 -xHost -ftz -fno-alias -fp-model fast=2"
 
-    if systemType != 'DARWIN':
+    if systemType != 'Darwin':
         envDict["EXT"]="so"
         # TODO DNDEBUG
         envDict["SCFLAGS"]="-DNO_LIBSNDFILE -DSC_LINUX -shared -fPIC"
