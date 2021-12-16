@@ -6,6 +6,10 @@ It is a rewrite and replacement of the original `faust2sc` (for converting faust
 
 This will eventually end up as a pull request to be included with faust
 
+## Requirements
+
+The script uses only built in Python modules, but *python version =>3.8 is needed*.
+
 ## Usage
 
 Download this repo. 
