@@ -378,7 +378,10 @@ def get_parameter_list(json_data, with_initialization):
         counter = counter + 1
 
     if json_data["inputs"] > 0:
-        out_string = inputs + "," + out_string
+        if out_string == "":
+            out_string = inputs
+        else:
+            inputs = inputs + "," + out_string
 
     return out_string
 
@@ -577,4 +580,3 @@ if __name__ == "__main__":
     copy_cpp = args.cpp or False
     if copy_cpp:
         shutil.move(scresult["cpp_file"], path.join(target, scresult["cpp_file"]))
-    # tmp_folder
