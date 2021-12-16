@@ -195,16 +195,22 @@ def includeflags(header_path):
     return "-I%s -I%s -I%s -I%s -I%s" % (plugin_interface, common, server, includedir, os.getcwd())
 
 # Generate a string of build flags for the compiler command. This includes the include flags.
-def buildflags(headerpath):
+def buildflags(headerpath, macos_arch):
+
+    mac_arch=""
+    if macos_arch == "x86_64":
+        mac_arch = "-arch x86_64"
+    elif macos_arch == "arm64":
+        mac_arch = "-arch arm64"
+
     env = faustoptflags()
-    return "-O3 %s %s %s" % (env["SCFLAGS"], includeflags(headerpath), env["MYGCCFLAGS"])
+    return "-O3 %s %s %s %s" % (env["SCFLAGS"], includeflags(headerpath), env["MYGCCFLAGS"], mac_arch)
 
 # Compile a .cpp file generated using faust to SuperCollider plugins.
 # TODO: Allow additional CXX flags
-def compile(out_dir, cpp_file, class_name, compile_supernova, headerpath):
+def compile(out_dir, cpp_file, class_name, compile_supernova, headerpath, macos_arch):
     print("Compiling %s" % class_name)
-
-    flags = buildflags(headerpath)
+    flags = buildflags(headerpath, macos_arch)
     env = faustoptflags()
 
     if path.exists(cpp_file):
@@ -543,6 +549,8 @@ if __name__ == "__main__":
     parser.add_argument("inputfile", help="A Faust .dsp file to be converted")
 
     parser.add_argument("-a", "--architecture", help="Use an alternative architecture file. If not set, it will use the default supercollider.cpp file that comes with faust.")
+
+    parser.add_argument("-m", "--macosarch", help="Enforce a macOS architecture. Can be either arm64 or x86_64 (Rosetta on Mx sillicon)")
     parser.add_argument("-t", "--targetfolder", help="Put the generated files in this folder. If not used, it will put the files in the current working directory.")
     parser.add_argument("-n", "--noprefix", help="1 == Do not prefix the SuperCollider class and object with Faust. 0 == prefix", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile with supernova plugin", action="store_true")
@@ -559,9 +567,10 @@ if __name__ == "__main__":
 
     compile_supernova = args.supernova
     header_path = args.headerpath
+    macosarch = args.macosarch
 
     # Compile the plugin objects
-    compile(tmp_folder.name, scresult["cpp_file"], scresult["class"], compile_supernova, header_path)
+    compile(tmp_folder.name, scresult["cpp_file"], scresult["class"], compile_supernova, header_path, macosarch)
 
     # Move files to target
     env = faustoptflags()
