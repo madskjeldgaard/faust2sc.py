@@ -387,7 +387,7 @@ def get_parameter_list(json_data, with_initialization):
         if out_string == "":
             out_string = inputs
         else:
-            inputs = inputs + "," + out_string
+            out_string = inputs + "," + out_string
 
     return out_string
 
