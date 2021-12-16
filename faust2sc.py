@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # Compile a faust file as a SuperCollider help file
 import os
 import sys
