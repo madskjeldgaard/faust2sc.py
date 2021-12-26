@@ -122,38 +122,46 @@ def faustoptflags():
 
     return envDict
 
-# Check if header path contains the right folders
-def check_header_path(headerpath):
-    headerpath = path.join(headerpath, "include")
-    plugin_interface = path.join(headerpath, "plugin_interface")
-    server = path.join(headerpath, "server")
-    common = path.join(headerpath, "common")
+# Return the header paths if they exists.
+def get_header_paths(headerpath):
+    folders = [
+        path.join(headerpath, "plugin_interface"),
+        path.join(headerpath, "server"),
+        path.join(headerpath, "common")
+    ]
 
-    if path.exists(headerpath) and path.exists(plugin_interface) and path.exists(server) and path.exists(common):
-        return True
-    else:
-        return False
+    if all(path.exists(folder) for folder in folders):
+        return folders
 
 # Try and find SuperCollider headers on system
-def find_headers():
+def find_headers(headerpath):
+    found_msg = "Found SuperCollider headers: %s"
+    folders = get_header_paths(headerpath)
+    if folders:
+        print(found_msg % headerpath)
+        return folders
+
     # Possible locations of SuperCollider headers
-    header_directories = [
-        "/usr/local/include/SuperCollider/include",
+    guess = [
+        "/usr/local/include/SuperCollider",
         "/usr/local/include/supercollider",
         "/usr/include/SuperCollider",
         "/usr/include/supercollider",
         "/usr/local/include/SuperCollider/",
         "/usr/share/supercollider-headers",
         path.join(os.getcwd(), "supercollider")
-        ]
+    ]
 
-    if os.environ['HOME']:
-        header_directories.append(path.join(os.environ['HOME'], "supercollider"))
+    if 'HOME' in os.environ:
+        guess.append(path.join(os.environ['HOME'], "supercollider"))
 
-    for headerpath in header_directories:
-        if check_header_path(headerpath):
-            print("Found SuperCollider headers: %s" % headerpath)
-            return headerpath
+    for headerpath in guess:
+        folders = get_header_paths(headerpath)
+        if folders:
+            print(found_msg % headerpath)
+            return folders
+
+    sys.exit("Could not find SuperCollider headers")
 
 # Generate string of include flags for the compiler command
 def includeflags(header_path):
@@ -165,34 +173,8 @@ def includeflags(header_path):
 
     incresult = subprocess.run(["faust", "-includedir"], stdout=subprocess.PIPE)
     includedir = incresult.stdout.decode('utf-8')
-
-    if header_path:
-        sc = header_path
-    else:
-        possible_header_path = find_headers()
-        if possible_header_path:
-            if check_header_path(possible_header_path):
-                sc = possible_header_path
-            else:
-                sys.exit("Could not find SuperCollider headers")
-        else:
-            sys.exit("Could not find SuperCollider headers")
-
-    sc = path.join(sc, "include")
-
-    plugin_interface = path.join(sc, "plugin_interface")
-    if not path.exists(plugin_interface):
-        sys.exit("Could not find supercollider headers")
-
-    server = path.join(sc, "server")
-    if not path.exists(server):
-        sys.exit("Could not find supercollider headers")
-
-    common = path.join(sc, "common")
-    if not path.exists(common):
-        sys.exit("Could not find supercollider headers")
-
-    return "-I%s -I%s -I%s -I%s -I%s" % (plugin_interface, common, server, includedir, os.getcwd())
+    plugin, common, server = find_headers(header_path)
+    return "-I%s -I%s -I%s -I%s -I%s" % (plugin, common, server, includedir, os.getcwd())
 
 # Generate a string of build flags for the compiler command. This includes the include flags.
 def buildflags(headerpath, macos_arch):
@@ -555,7 +537,7 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--noprefix", help="1 == Do not prefix the SuperCollider class and object with Faust. 0 == prefix. It is 1 by default, ie not using the Faust prefix.", type=int, choices=[0,1])
     parser.add_argument("-s", "--supernova", help="Compile with supernova plugin", action="store_true")
     parser.add_argument("-c", "--cpp", help="Copy cpp file to target directory after compilation.", action="store_true")
-    parser.add_argument("-p", "--headerpath", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
+    parser.add_argument("-p", "--headerpath", default="./include", help="Path to SuperCollider headers. If no header path is supplied, the script will try to find the headers in common locations.")
     args = parser.parse_args()
 
     # Temporary folder for intermediary files
