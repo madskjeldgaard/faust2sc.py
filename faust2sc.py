@@ -147,7 +147,7 @@ def find_headers():
         path.join(os.getcwd(), "supercollider")
         ]
 
-    if os.environ['HOME']:
+    if 'HOME' in os.environ:
         header_directories.append(path.join(os.environ['HOME'], "supercollider"))
 
     for headerpath in header_directories:
