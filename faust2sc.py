@@ -131,14 +131,13 @@ def get_header_paths(headerpath):
     ]
 
     if all(path.exists(folder) for folder in folders):
+        print("Found SuperCollider headers: %s" % headerpath)
         return folders
 
 # Try and find SuperCollider headers on system
 def find_headers(headerpath):
-    found_msg = "Found SuperCollider headers: %s"
     folders = get_header_paths(headerpath)
     if folders:
-        print(found_msg % headerpath)
         return folders
 
     # Possible locations of SuperCollider headers
@@ -158,7 +157,6 @@ def find_headers(headerpath):
     for headerpath in guess:
         folders = get_header_paths(headerpath)
         if folders:
-            print(found_msg % headerpath)
             return folders
 
     sys.exit("Could not find SuperCollider headers")
