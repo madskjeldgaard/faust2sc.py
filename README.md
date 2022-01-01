@@ -1,3 +1,9 @@
+# This is now part of faust
+
+See https://github.com/grame-cncm/faust/pull/689
+
+For more info. Any contributions and issues on this should be addressed in the faust repo. 
+
 # faust2sc.py
 
 This repo contains a script - `faust2sc.py` - for compiling [https://github.com/grame-cncm/faust](faust) files to SuperCollider plugins. 
